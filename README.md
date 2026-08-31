@@ -1,4 +1,4 @@
-# BCR Bot -> checkpoint 2
+# BCR Bot -> checkpoint 3
 
 https://github.com/blackcoffeerobotics/bcr_bot/assets/13151010/0fc570a3-c70c-415b-8222-b9573d5911c8
 
