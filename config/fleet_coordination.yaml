@@ -1,0 +1,209 @@
+# =============================================================================
+#  Fleet coordination parameters
+# =============================================================================
+#
+#  Everything in here is shared by all robots. Per-robot values -- robot_id,
+#  base_priority, map path, log path -- are supplied by
+#  launch/fleet_coordination.launch.py, so adding a fifth robot needs no edit
+#  to this file.
+#
+#  The "/**/" prefix matches the node in any namespace, which is what lets one
+#  file configure /amr1/fleet_collision_node, /amr2/... and so on.
+#
+#  Where the numbers come from is written next to each block. None of them are
+#  round numbers picked to look tidy; the ones that matter are derived from
+#  bcr_bot.xacro, from bcr_map.pgm, or from the 09:16 / 09:18 proximity logs.
+# =============================================================================
+
+/**/fleet_collision_node:
+  ros__parameters:
+    use_sim_time: true
+
+    # -- chassis -------------------------------------------------------------
+    # bcr_bot.xacro: chassis_length 0.90, chassis_width 0.64. Modelled as a
+    # capsule (radius 0.32, spine 0.13), which is the exact rounded hull of
+    # that rectangle. This replaces the single disc radius: a disc of 0.30
+    # under-protects the corners of a 0.90 m chassis, and a disc of 0.55 (the
+    # true circumscribed radius) brakes for every clean side-by-side pass.
+    footprint_length: 0.90
+    footprint_width: 0.64
+
+    # -- clearances, in METRES OF AIR BETWEEN HULLS --------------------------
+    # Not centre-to-centre. Centre distance means different things depending
+    # on whether a pair is passing nose-to-nose or shoulder-to-shoulder, and
+    # that ambiguity is what made the old 1.5 m trigger both too twitchy and
+    # too late at the same time.
+    #
+    # safety_margin 0.25 reconciles with the logs: two robots passing
+    # shoulder-to-shoulder at the recorded 0.92 m centre separation have
+    # 0.92 - 0.64 = 0.28 m of air, which clears this margin and is correctly
+    # NOT flagged. The 09:18 encounter, predicted to pass at 0.11 m centre
+    # separation, is a hull overlap of -0.53 m and is flagged 6+ s out.
+    safety_margin: 0.25
+    hysteresis_m: 0.20          # extra air needed to *release* a yield
+    emergency_clearance: 0.15   # unconditional stop, overrides right of way
+
+    # -- prediction ----------------------------------------------------------
+    # horizon 8.0 because the genuine conflict in the 09:18 encounter was
+    # already predictable 6.2 s before contact. A 4 s horizon misses it; the
+    # old 1.5 m distance trigger caught it with ~2 s to spare, and with that
+    # little room the only resolution left was to crawl -- which is exactly
+    # what the log shows, 1.12 m held for 4.5 s while both robots kept moving.
+    horizon_s: 8.0
+    sweep_step_s: 0.25          # 0.25 * 0.4 m/s = 10 cm of travel per sample
+    brake_ttc_s: 2.5
+    stop_ttc_s: 1.0
+    min_speed_scale: 0.15       # below this, stop: crawling only holds the
+                                # threshold, it never resolves anything
+    row_speed_scale: 0.85       # the robot with right of way still eases off
+
+    # -- arbitration ---------------------------------------------------------
+    # aging_rate 0.25 with base priorities 1..4 means the widest possible gap
+    # (amr1 vs amr4 = 3.0) is erased after 3.0 / 0.25 = 12 s of waiting. In
+    # the original logs amr2 sat still for 117 seconds and moved 1 cm, because
+    # a fixed rank loses every arbitration forever. The cap is now 12 s.
+    aging_rate: 0.25
+    arbitration_deadband: 0.05  # covers one broadcast period of staleness
+                                # (0.1 s * 0.25 = 0.025) with margin to spare
+    max_wait_credit: 30.0
+    latch_release_s: 1.0        # hold a decision for the life of an encounter
+                                # so aging cannot flip it mid-pass
+    headon_angle_deg: 135.0
+    overtake_angle_deg: 45.0
+    still_speed: 0.05
+
+    # -- deadlock escalation -------------------------------------------------
+    # Head-on and "a peer is parked in my way" are both known-unresolvable by
+    # waiting, so they escalate in a couple of seconds. A plain crossing
+    # conflict gets the full timeout, because waiting usually does resolve it.
+    max_hold_s: 6.0
+    headon_hold_s: 1.5
+    blocked_hold_s: 2.5
+    reroute_repeat_s: 8.0
+
+    # -- laser floor ---------------------------------------------------------
+    # Last resort only, for obstacles that are in neither the map nor the
+    # fleet bus. It is suppressed whenever the nearest return can be
+    # accounted for by a known peer, because peers are already handled
+    # predictively and far more precisely than a range bin can manage.
+    # NOTE: two_d_lidar_min_range is 0.55 m in the URDF, so anything closer
+    # than that is invisible to this check -- it is a floor, not a bumper.
+    laser_enabled: true
+    laser_stop_m: 0.70
+    laser_cone_deg: 50.0
+    laser_peer_tolerance_m: 0.30
+
+    # -- plumbing ------------------------------------------------------------
+    peer_timeout_s: 1.5
+    control_hz: 20.0
+    broadcast_hz: 10.0
+    cmd_timeout_s: 0.75         # upstream silence -> stop, do not coast
+    rotation_margin_m: 0.10
+    publish_markers: true
+    marker_frame: "map"
+    log_period_s: 0.5
+
+
+/**/fleet_navigator:
+  ros__parameters:
+    use_sim_time: true
+
+    footprint_length: 0.90
+    footprint_width: 0.64
+
+    # planning_clearance is the CIRCUMSCRIBED radius (0.45 m), not the
+    # half-width (0.32 m), so every cell on a planned path is one the robot
+    # could also turn around in. The warehouse aisles measure 0.90-0.96 m of
+    # clearance at their centre line, so 0.45 still routes through all of them.
+    planning_downsample: 3      # 0.05 m map -> 0.15 m planning cells (196x208)
+    planning_clearance: 0.45
+    prefer_clearance: 0.90      # bias routes to the middle of an aisle; this
+                                # alone removes most marginal encounters
+    clearance_weight: 0.6
+
+    # -- velocity profile ----------------------------------------------------
+    max_linear: 0.40
+    max_angular: 1.00
+    max_accel: 0.35
+    lookahead_m: 0.80
+    lookahead_gain: 0.9
+    lookahead_min: 0.45
+    lookahead_max: 1.60
+    spin_threshold_deg: 35.0
+    spin_gain: 1.6
+    goal_tolerance: 0.25
+    final_approach_m: 1.0
+
+    # -- replanning ----------------------------------------------------------
+    # Peers are soft cost by default (routes bend away from congestion early)
+    # and become hard obstacles only when the collision layer reports being
+    # held behind one, or when they have sat still long enough to count as
+    # furniture rather than traffic.
+    replan_period_s: 4.0
+    peer_soft_radius: 1.40
+    peer_soft_weight: 4.0
+    peer_hard_radius: 0.85
+    blocker_memory_s: 12.0
+    stuck_peer_s: 4.0
+    max_reroutes: 3
+    max_backoffs: 3
+    wait_timeout_s: 12.0
+
+    # -- retreat -------------------------------------------------------------
+    # Reversing is the one manoeuvre always permitted during a head-on: it
+    # increases clearance, so the predictive layer downstream does not brake
+    # it. 1.20 m is enough to clear a robot out of a 1.8 m aisle junction.
+    backoff_speed: 0.18
+    backoff_distance: 1.20
+    backoff_timeout_s: 10.0
+
+    control_hz: 20.0
+    peer_timeout_s: 1.5
+    path_frame: "map"
+
+
+/**/fleet_task_allocator:
+  ros__parameters:
+    use_sim_time: true
+
+    # Coarser grid than the navigator: bids only need a route *length*, and
+    # an auction that closes in 1 s cannot wait 200 ms per price quote.
+    planning_downsample: 6
+    planning_clearance: 0.45
+
+    bid_window_s: 1.0
+    owner_timeout_s: 4.0        # heartbeat gone this long -> owner is dead
+    assign_timeout_s: 8.0       # awarded but never started -> reopen
+    reopen_period_s: 5.0
+    max_attempts: 4
+    max_queue: 2                # bid only while we have real capacity
+
+    # Bids are in ESTIMATED SECONDS TO COMPLETION, not distance to pickup.
+    # That is what stops the nearest robot hoarding: a robot standing on the
+    # pickup with two jobs queued honestly bids worse than an idle robot 6 m
+    # away, and the fleet balances without a central load balancer.
+    nominal_speed: 0.35
+    queue_penalty_s: 8.0
+    congestion_penalty_s: 6.0
+    congestion_radius_m: 3.0
+
+    dwell_s: 2.0                # simulated load / unload
+    tick_hz: 5.0
+    peer_timeout_s: 2.0
+
+
+/**/fleet_monitor:
+  ros__parameters:
+    use_sim_time: true
+    refresh_hz: 2.0
+    peer_timeout_s: 3.0
+    clear_screen: true
+
+
+/**/fleet_task_dispatcher:
+  ros__parameters:
+    use_sim_time: true
+    mode: "scripted"
+    interval_s: 8.0
+    start_delay_s: 10.0         # let Gazebo settle and odom start flowing
+    seed: 20240901

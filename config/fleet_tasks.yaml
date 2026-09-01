@@ -1,0 +1,119 @@
+# =============================================================================
+#  Stations and demo workload for the AMR fleet
+# =============================================================================
+#
+#  Every coordinate here was checked against config/bcr_map.pgm: each station
+#  has at least 0.85 m of clearance, comfortably more than the 0.45 m the
+#  planner requires, and every station pair is routable. Run
+#
+#      python3 scripts/verify_fleet_config.py
+#
+#  after editing this file -- a station a few centimetres inside a shelf leg
+#  produces a task nobody can bid on, and that is a confusing thing to debug
+#  live. (The old multi-robot launch spawned robots at (2.5, 0) and (5.0, 0),
+#  which have 0.33 m and 0.30 m of clearance -- a 0.64 m wide robot cannot
+#  physically exist there.)
+#
+#  Layout, from the map: the warehouse interior runs x in [-6.8, 6.7] and
+#  y in [-10.2, 10.2]. The west half is open floor. The east half is two
+#  north-south racking aisles about 1.8 m wide, at x ~ 3.8 and x ~ 5.7.
+#  Those aisles are the interesting part: two 0.64 m robots fit past each
+#  other there only just, which is what makes head-on encounters real rather
+#  than theoretical.
+# =============================================================================
+
+stations:
+  # --- west side: open floor, docks and staging ---
+  dock_a:         [-5.60, -8.60]
+  dock_b:         [-5.60, -1.00]
+  dock_c:         [-5.60,  5.00]
+  stage_1:        [-1.30, -3.10]
+  stage_3:        [ 0.40,  4.60]
+  north_hall:     [ 1.40,  0.35]
+
+  # --- east side: the two racking aisles ---
+  aisle_s_south:  [ 3.80, -8.50]
+  rack_1:         [ 3.80, -6.00]
+  rack_2:         [ 3.80, -3.00]
+  aisle_s_north:  [ 3.80, -0.50]
+
+  aisle_n_south:  [ 5.70, -8.50]
+  rack_3:         [ 5.70, -6.00]
+  rack_4:         [ 5.70, -3.00]
+  aisle_n_north:  [ 5.70, -0.50]
+  cross_e:        [ 5.65,  1.35]
+
+# =============================================================================
+#  Scripted workload
+# =============================================================================
+#
+#  Ordered to exercise each layer in turn rather than to look busy. The
+#  dispatcher publishes one every `interval_s`; nobody is assigned here --
+#  the robots auction these out among themselves.
+# =============================================================================
+
+tasks:
+  # 1-2: plain transport. Watch the auction: the robot that wins is the one
+  # with the shortest *route*, which is not the one with the shortest
+  # straight line, because the racking sits between the west floor and the
+  # aisle mouths.
+  - id: T01
+    label: "dock_a -> rack_2"
+    pickup: dock_a
+    dropoff: rack_2
+
+  - id: T02
+    label: "dock_c -> rack_3"
+    pickup: dock_c
+    dropoff: rack_3
+
+  # 3-4: deliberately opposed. These two send robots into the SAME 1.8 m
+  # aisle from opposite ends at roughly the same time. This is the head-on
+  # case: the speed governor cannot resolve it, so expect YIELD_HEADON,
+  # a reroute request, and one robot retreating to the aisle mouth.
+  - id: T03
+    label: "aisle_s_south -> aisle_s_north  (northbound in aisle A)"
+    pickup: aisle_s_south
+    dropoff: aisle_s_north
+
+  - id: T04
+    label: "aisle_s_north -> aisle_s_south  (southbound in aisle A)"
+    pickup: aisle_s_north
+    dropoff: aisle_s_south
+
+  # 5-6: crossing traffic through the open floor. These should resolve with
+  # nothing more than a speed change -- one robot arrives a second later and
+  # neither ever stops. If you see a full stop here, brake_ttc_s is too low.
+  - id: T05
+    label: "stage_1 -> cross_e"
+    pickup: stage_1
+    dropoff: cross_e
+
+  - id: T06
+    label: "north_hall -> aisle_n_south"
+    pickup: north_hall
+    dropoff: aisle_n_south
+
+  # 7-8: load balancing. By now two robots are carrying work, so these
+  # should go to whoever is free, even if a busy robot is physically nearer.
+  - id: T07
+    label: "rack_1 -> dock_c"
+    pickup: rack_1
+    dropoff: dock_c
+
+  - id: T08
+    label: "rack_4 -> dock_a"
+    pickup: rack_4
+    dropoff: dock_a
+
+  # 9-10: sustained traffic, to let the monitor accumulate enough time in
+  # each avoidance state for the percentages to mean something.
+  - id: T09
+    label: "dock_a -> aisle_n_north"
+    pickup: dock_a
+    dropoff: aisle_n_north
+
+  - id: T10
+    label: "stage_3 -> aisle_s_south"
+    pickup: stage_3
+    dropoff: aisle_s_south

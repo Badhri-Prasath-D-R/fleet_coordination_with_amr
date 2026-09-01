@@ -1,8 +1,8 @@
 <?xml version="1.0"?>
 <package format="2">
 	<name>bcr_bot</name>
-	<version>1.0.2</version>
-	<description>bcr_bot</description>
+	<version>1.1.0</version>
+	<description>bcr_bot, with a decentralized multi-AMR fleet coordination stack</description>
 
 	<maintainer email="gaurav@blackcoffeerobotics.com">Gaurav Gupta</maintainer>
 	<maintainer email="devanshu@blackcoffeerobotics.com">Devanshu Sharma</maintainer>
@@ -10,12 +10,23 @@
 	<license>Apache License 2.0</license>
 
 	<buildtool_depend>ament_cmake</buildtool_depend>
+	<buildtool_depend>ament_cmake_python</buildtool_depend>
 
 	<exec_depend>ament_index_python</exec_depend>
 	<exec_depend>launch</exec_depend>
 	<exec_depend>launch_ros</exec_depend>
 	<exec_depend>robot_state_publisher</exec_depend>
 	<exec_depend>xacro</exec_depend>
+
+	<!-- fleet coordination stack -->
+	<exec_depend>rclpy</exec_depend>
+	<exec_depend>std_msgs</exec_depend>
+	<exec_depend>geometry_msgs</exec_depend>
+	<exec_depend>nav_msgs</exec_depend>
+	<exec_depend>sensor_msgs</exec_depend>
+	<exec_depend>visualization_msgs</exec_depend>
+	<exec_depend>tf2_ros</exec_depend>
+	<exec_depend>python3-yaml</exec_depend>
 
 	<export>
 		<build_type>ament_cmake</build_type>
